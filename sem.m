@@ -1,229 +1,376 @@
 function sem
+
 disp(datetime("now"));
-%% import data
+%% import data variables
 
-myCsv = 0;
-file = 0;
+myCsv = 0; %file handle
+file = 0;   %file name to import
+loadedFile = 0; %bool if a file is loaded
 
-%% period change for testing
+%% variables
+testPeriod = 0; 
+
+
+tableData = {}; % for "stats" computation
+
+% raw import data
+dates = 0;
+starts = 0;
+ends = 0;
+
 firstDate = NaT;
-lastDate = NaT;
-WarnWrongDate=1
-loadedFile = 0
-testPeriod = 0
+lastDate = NaT; %GUI picked dates
 
-%% compute everything and then just use
+curDates = NaT;
+curStarts = duration(hours(0));
+curEnds = duration(hours(0));
+curTimes = duration(hours(0));
+curSleep = duration(hours(0));  %count fall asleep at specific hour
+curWake = duration(hours(0)); %count wakeups at specific hour 
+curLen = duration(hours(0));
+curDayRecords = [];
 
-firstDate = datetime('12.12.2020 18:30:00', 'InputFormat', 'dd.MM.uuuu HH:mm:ss');
-lastDate = datetime('20.12.2020 22:30:30', 'InputFormat', 'dd.MM.uuuu HH:mm:ss');
-lastDate.Day-firstDate.Day
-%% get clean dates and cumulative sleep
-function recalculateAll(src, event)
-    %% raw imported data
-    dates = flip(myCsv{:, 1}); % dates sorted oldest first
-    starts = flip(myCsv{:, 2});
-    ends = flip(myCsv{:, 3});
-    
-    testPeriod = lastDate.Day-firstDate.Day
-    CleanDates = NaT(testPeriod,1);
-    CleanDateRunner = 1;
+errBackground = [0.7 0.5 0.5]; %error
+attBackground = [0.8 0.8 0.4]; %attention
+succBackground = [0.4 0.8 0.4]; %success
+vanBackground = [0.96 0.96 0.96]; %vanilla
 
-    CumTimes = repmat(duration(hours(0)), testPeriod, 1);
-    lengthsRunner = 0; %important 0 not 1
-    curStarts = NaT(2*(lastDate.Day-firstDate.Day),1);
-    curEnds = NaT(2*(lastDate.Day-firstDate.Day),1);
-    CRun = 1
-    curDur = repmat(duration(hours(0)), testPeriod, 1);
-    startsRunner = 1;
-    startIndex = (find(dates>=firstDate, 1,'first')) %finds first index in selected interval
-    endIndex = (find(dates>=lastDate, 1,'first'))   %finds last index in selected interval 
-    x = startIndex;
-    lastEnd = datetime('6 9 420', "InputFormat", 'dd M uuuu')
-    while x < endIndex
-        FIST = string(dates(x))+" "+string(starts(x));
-        SEST = string(dates(x))+" "+string(ends(x));
-        FI = datetime(FIST, 'InputFormat', 'dd.MM.uuuu HH:mm:ss');
-        SE = datetime(SEST, 'InputFormat', 'dd.MM.uuuu HH:mm:ss');
-        
-        if SE.Hour < FI.Hour %correctly compute midnight
-            FI = FI-days(1); 
-        end
-        
-        curStarts(startsRunner) =FI;
-        curEnds(startsRunner) = SE;
-        startsRunner = startsRunner+1;
-        
-        if SE.Day ~= lastEnd.Day
-            CleanDates(CleanDateRunner) = datetime(string(SE.Day)+" "+string(SE.Month)+" "+string(SE.Year), 'InputFormat', "dd MM uuuu");
-            CleanDateRunner = CleanDateRunner+1;
-            lengthsRunner = lengthsRunner+1;
-            lastEnd = SE;
-     
-        end
-        CumTimes(lengthsRunner)= CumTimes(lengthsRunner)+(SE-FI);
-        curDur(CRun) = SE-FI;
-        CRun = CRun+1
-        x=x+1;
-    end
-    %CleanDates 
-    CumTimes = CumTimes(1:length(CleanDates));% %make length match
-    
-    curDates = CleanDates;
-    curTimes = CumTimes;
-    curStarts= curStarts(~isnat(curStarts));
-    curEnds = curEnds(~isnat(curEnds));
-    
-%     %% pattern
-% 
-%     %draw rectangles lmao
-% 
-%% sleep
-    curStarts
-    dayParts = 0:1:23;
-    curSleep = zeros(24, 1);
-    for B = 1:size(dayParts,2)-1-1
-        curSleep(B) = length(curStarts((curStarts.Hour >= B) & (curStarts.Hour < B+1)));
-    end
-    curSleep
-    %setappdata(myFig, 'sleepData', sleepCount)
-    
-    %% wake
-    dayParts = 0:1:23;
-    curWake = zeros(24, 1);
-    for B = 1:size(dayParts,2)-1-1
-        disp(B)
-        curWake(B) = length(curEnds((curEnds.Hour >= B) & (curEnds.Hour < B+1)));
-    end
-end
 
-%% launch gui
-GUIstartX = 200; 
+%% GUI
+GUIstartX = 200;
 GUIstartY = 200;
 GUIstartWidth = 600;
 GUIstartHeight = 400;
-myFig = uifigure('Name', 'yeet', ...
+myFig = uifigure('Name', 'Sleep Data Visualiser', ...
     'Position', [GUIstartX, GUIstartY, GUIstartWidth, GUIstartHeight]);
 
-%uiaxes settings
+% uiaxes settings
 sidePadding = 0.05*GUIstartWidth;
 bottomPadding = 0.2*GUIstartHeight;
 axesWidth = 0.9*GUIstartWidth;
 axesHeight = 0.8*GUIstartHeight;
-dataLen = testPeriod
 
 myAxes = uiaxes(myFig, ...
     'Position', [sidePadding, bottomPadding, axesWidth,  axesHeight], ...
-    'YAxisLocation', 'left', 'Xlim', [1 2], 'Ylim', [0 13], ...
-    'Xgrid', 'on', 'Ygrid', 'on');
-%    'UserData', nan(1,dataLen));
+    'YAxisLocation', 'left', 'Xlim', [1 24], 'Ylim', [0 13], ...
+    'Xgrid', 'on', 'Ygrid', 'on', 'ylimmode', 'manual');
+
+% bottom button group
+myButtonsGroup = uibuttongroup(myFig, 'Position', [10, 10, 380, 40], ...
+    'enable', 'off');
 
 
-%% top kek
-curDates = NaT
-curStarts = duration(hours(0))
-curEnds = duration(hours(0))
-curTimes = duration(hours(0))
-curSleep = duration(hours(0))
-curWake = duration(hours(0))
-%myFig = uifigure('Name', 'yeet', ...
-%    'Position', [startX, startY, startWidth, startHeight]);
-myButtonsGroup = uibuttongroup(myFig, 'Position', [10, 10, 380, 40]);
-disp(myButtonsGroup.Buttons)
-
-B1 = uiradiobutton(myButtonsGroup, 'position', [10 10 60 20], 'text', 'wake');
+B1 = uiradiobutton(myButtonsGroup, 'position', [10 10 60 20], 'text', 'trend');
 B2 = uiradiobutton(myButtonsGroup, 'position', [70 10 60 20], 'text', 'sleep');
-B3 = uiradiobutton(myButtonsGroup, 'position', [130 10 60 20], 'text', 'trend');
+B3 = uiradiobutton(myButtonsGroup, 'position', [130 10 60 20], 'text', 'wake');
 B4 = uiradiobutton(myButtonsGroup, 'position', [190 10 60 20], 'text', 'debt');
-B5 = uiradiobutton(myButtonsGroup, 'position', [250 10 60 20], 'text', 'pattern');
+B5 = uiradiobutton(myButtonsGroup, 'position', [250 10 60 20], 'text', 'length');
 B6 = uiradiobutton(myButtonsGroup, 'position', [320 10 60 20], 'text', 'stats');
 buttonVector = [B1, B2, B3, B4, B5, B6];
-B7 = uibutton(myFig, 'position', [420 40 100 30], 'text', 'recalculate',...
+myButtonsGroup.SelectionChangedFcn = {@BtnGroupFcn, buttonVector};
+
+B7 = uibutton(myFig, 'position', [400 10 90 30], 'text', 'recalculate',...
     'ButtonPushedFcn', @B7Recalc, 'enable', 'off');
+
+B8 = uibutton(myFig, 'position', [500 10 90 30], 'text', 'Import file' ,...
+    'ButtonPushedFcn', @importFcn, 'enable', 'on', ...
+    'backgroundColor', attBackground);
+
+% other UI elements
+D1 = uidatepicker(myFig, 'position', [100 55 100 25], ...
+    'displayformat', 'dd.MM.uuuu', ...
+    'ValueChangedFcn', @DateChangeFcn,...
+    'enable', 'off'); %firstDate picker
+D2 = uidatepicker(myFig, 'position', [290 55 100 25], ...
+    'displayformat', 'dd.MM.uuuu',...
+    'ValueChangedFcn', @DateChangeFcn, ...
+    'enable', 'off'); %lastDate picker
+
+T1 = uilabel(myFig, 'text', 'Start Date/From' , 'position', [10 55 100 20]);
+T2 = uilabel(myFig, 'text', 'End Date/To' , 'position', [210 55 100 20]);
+
+
+M1 = uimenu(myFig,'Text','Import File');
+M1.MenuSelectedFcn = @importFcn;
+
+M2 = uimenu(myFig, 'text', 'About');
+M2.MenuSelectedFcn = @aboutFcn;
+
+myTable = uitable(myFig, 'position', [sidePadding, bottomPadding, axesWidth, axesHeight], 'visible', 'off');
+
+
+%% functions
+    function recalculateAll(src, event)
+        testPeriod = days(lastDate-firstDate)+5
+        CleanDates = NaT(testPeriod,1);
+        curDayRecords = zeros(testPeriod,1);
+        CleanDateRunner = 1;
+        disp("recacculating m8")
+        
+        CumTimes = repmat(duration(hours(0)), 3*testPeriod, 1);
+        lengthsRunner = 0; %important 0 not 1
+        curStarts = NaT(2*(lastDate.Day-firstDate.Day),1);
+        curEnds = NaT(2*(lastDate.Day-firstDate.Day),1);
+        
+        CRun = 1;
+        curDur = repmat(duration(hours(0)), testPeriod, 1);
+        startsRunner = 1;
+        startIndex = (find(dates>=firstDate, 1,'first')); %finds first index in selected interval
+        endIndex = (find(dates>lastDate, 1,'first'));   %finds last index in selected interval
+        x = startIndex;
+        lastEnd = NaT%;datetime('1 2 3456', "InputFormat", 'dd M uuuu'); % to fail if check
+        
+        while x < endIndex
+            FIST = string(dates(x))+" "+string(starts(x));
+            SEST = string(dates(x))+" "+string(ends(x));
+            FI = datetime(FIST, 'InputFormat', 'dd.MM.uuuu HH:mm:ss');
+            SE = datetime(SEST, 'InputFormat', 'dd.MM.uuuu HH:mm:ss');
+            
+            if SE.Hour < FI.Hour %correctly compute midnight
+                FI = FI-days(1);
+            end
+            
+            curStarts(startsRunner) =FI;
+            curEnds(startsRunner) = SE;
+            startsRunner = startsRunner+1;
+            
+            if SE.Day ~= lastEnd.Day
+                CleanDates(CleanDateRunner) = datetime(string(SE.Day)+" "+string(SE.Month)+" "+string(SE.Year), 'InputFormat', "dd MM uuuu");
+                CleanDateRunner = CleanDateRunner+1;
+                lengthsRunner = lengthsRunner+1;
+                lastEnd = SE;
+                
+            end
+            CumTimes(lengthsRunner)= CumTimes(lengthsRunner)+(SE-FI);
+            curDayRecords(lengthsRunner) = curDayRecords(lengthsRunner)+1;
+            curDur(CRun) = SE-FI;
+            CRun = CRun+1;
+            x=x+1;
+        end
+        %CleanDates
+        CumTimes = CumTimes(1:length(CleanDates));% %make length match
+        
+        curDates = CleanDates;
+        curTimes = CumTimes;
+        curStarts= curStarts(~isnat(curStarts));
+        curEnds = curEnds(~isnat(curEnds));
+        
+        %% sleep
+        %curStarts
+        dayParts = 0:1:23;
+        curSleep = zeros(24, 1);
+        for B = 1:size(dayParts,2)-1-1
+            curSleep(B) = length(curStarts((curStarts.Hour >= B) & (curStarts.Hour < B+1)));
+        end
+        %curSleep;
+        
+        %% wake
+        dayParts = 0:1:23;
+        curWake = zeros(24, 1);
+        for B = 1:size(dayParts,2)-1-1
+            curWake(B) = length(curEnds((curEnds.Hour >= B) & (curEnds.Hour < B+1)));
+        end
+        
+        %% lengths
+        curLen = zeros(24,1);
+        curTimes(curTimes>hours(6) & curTimes < hours(8))
+        for B = 1:1:23
+            curLen(B) = length(curTimes((curTimes >= hours(B)) & (curTimes < hours(B+1))));
+        end
+        %% stats
+        curNumOfRecords = length(curTimes)
+        curAvSleepLen = mean(curTimes)
+        curDays = length(curDates)
+        singleDays = length(curDayRecords(curDayRecords==1));
+        multDays = curDays-singleDays;
+        tableData = {
+            'Amount of days', curDays;...
+            'Amount of records', curNumOfRecords;...
+            'Average sleep length', hours(curAvSleepLen); ...
+            'Days with single record', singleDays; ...
+            'Days with multiple records', multDays;
+            }
+        
+        
+    end
+
+
+%% button functions
     function B7Recalc(src, event)
         disp("B7 recalc")
-        recalculateAll()
-        printButVec(myButtonsGroup, 'lmao', buttonVector)
+        recalculateAll();
+        myButtonsGroup.Enable = 'on';
+        src.BackgroundColor = vanBackground;
+        BtnGroupFcn(myButtonsGroup, 'lmao', buttonVector);
     end
 
-D1 = uidatepicker(myFig, 'position', [400 10 100 20], ...
-                    'displayformat', 'dd.MM.uuuu', ...
-                    'ValueChangedFcn', @D1DateChangeFcn)
-D2 = uidatepicker(myFig, 'position', [500 10 100 20], ...
-                        'displayformat', 'dd.MM.uuuu',...
-                        'ValueChangedFcn', @D2DateChangeFcn)
-    function D1DateChangeFcn(src, event)
-        disp("D1 date change")
-        toSet = datetime(src.Value, 'InputFormat', 'dd.MM.uuuu');
-        firstDate = toSet;
+
+    function DateChangeFcn(src, event)
+        if loadedFile == 0
+            msgbox("critical error, please relaunch application")
+        else
+            disp("date change")
+            toSet = datetime(src.Value, 'InputFormat', 'dd.MM.uuuu');
+            
+            if ((toSet < dates(1)) || toSet > dates(end))
+                src.BackgroundColor = errBackground;
+                msgbox({"Selected date is out of data range", "please pick date between ", dates(1), dates(end)})
+                B7.Enable = 'off';
+                return;
+            end
+            if src == D1
+                firstDate = toSet;
+            else
+                lastDate = toSet;
+            end
+            
+            if ((src == D1) && (toSet > D2.Value) && (D2.Value ~=NaT))
+                src.BackgroundColor = errBackground;
+                msgbox(["Incorrect Interval"; "Start date is later than end date"])
+                B7.Enable = 'off';
+                
+            elseif((src == D2) && (toSet < D1.Value) && (D1.Value ~=NaT))
+                src.BackgroundColor = errBackground;
+                msgbox(["Incorrect Interval";"Start date is later than end date"])
+                B7.Enable = 'off';
+                
+            else
+                src.BackgroundColor = succBackground;
+                
+                if isIntervalCorrect(firstDate, lastDate)
+                    D1.BackgroundColor = succBackground;
+                    D2.BackgroundColor = succBackground;
+                end
+                
+                if ((~isnat(firstDate)) & (~isnat(lastDate)))
+                    disp(firstDate)
+                    disp(lastDate)
+                    B7.Enable= 'on';
+                    B7.BackgroundColor = attBackground;
+                end
+            end
+        end
     end
 
-    function D2DateChangeFcn(src, event)
-        toSet = datetime(src.Value, 'InputFormat', 'dd.MM.uuuu');
-        lastDate=toSet;
-    
-    end
-myButtonsGroup.SelectionChangedFcn = {@printButVec, buttonVector};
 
-%M1 = uimenu('Text','Options');
-M1 = uimenu(myFig,'Text','File');
-M1.MenuSelectedFcn = {@MenuSelected};
- 
-    function MenuSelected(src,event)
+    function importFcn(src,event)
         file = uigetfile('*.csv');
         if file == 0
             msgbox("Cancelled file import, please try again");
+            if loadedFile ~= 1
+                B7.Enable = 'off';
+            end
         elseif file(end-3:end)~= ".csv"
-           msgbox("Failed to import file, please select .csv file")
+            msgbox("Failed to import file, please select .csv file");
+            loadedFile = 0;
+            B7.Enable = 'off';
         else
-        myCsv = readtable(file);
-        loadedFile = 1
-        B7.Enable = 'on'
+            try
+                myCsv = readtable(file);
+            catch ME
+                loadedFile=0;
+                B7.Enable = 'off';
+                msgbox(["Specified file is in unknown format"; "please relauch the application and do not load that file"]);
+                error("Specified file is in unknown format, please relauch the application and do not load that file");
+            end
+            loadedFile=1;
+            dates = flip(myCsv{:, 1}); % dates sorted oldest first
+            starts = flip(myCsv{:, 2});
+            ends = flip(myCsv{:, 3});
+            
+            B8.BackgroundColor = vanBackground;
+            
+            D1.Enable = 'on';
+            D2.Enable = 'on';
+            
+            D1.BackgroundColor = attBackground;
+            D2.BackgroundColor = attBackground;
         end
         
+        
     end
- 
 
-%% todo 
-%   gui lmao
-%   length vs date
-%   pattern
-%   add background nebo labels aby urcil, jake obdobi zivota to bylo
-%  
-
-%
-%% buttonFunctions
-
-function printButVec(src, lmao, butVec)
-
-    parFig = src.Parent;
-    if  butVec(1).Value == 1
-        disp("displaying wake")
-        nowData = curWake;
-        nowXAxis = 0:23;
-        disp("data len "+string(length(nowData)));
-        disp("axis len"+string(length(nowXAxis)));
-        xtickformat(parFig.CurrentAxes, 'auto');
-        bar(parFig.CurrentAxes, nowXAxis, nowData);
+    function BtnGroupFcn(src, ~, butVec)
+        
+        parFig = src.Parent;
+        
+        if butVec(1).Value == 1
+            disp("displaying trend")
+            nowData = curTimes;
+            nowXAxis = curDates;
+            disp("data len "+string(length(nowData)));
+            disp("axis len"+string(length(nowXAxis)));
+            xtickformat(parFig.CurrentAxes, 'auto');
+            parFig.CurrentAxes.Visible = 'on';
+            myTable.Visible = "off";
+            plot(parFig.CurrentAxes, nowXAxis, nowData);
+        end
+        
+        if butVec(2).Value == 1
+            disp("displaying sleep")
+            nowData = curSleep;
+            nowXAxis = 0:23;
+            disp("data len "+string(length(nowData)));
+            disp("axis len"+string(length(nowXAxis)));
+            parFig.CurrentAxes.Visible = 'on';
+            parFig.CurrentAxes.YLimMode = 'auto';
+            myTable.Visible = "off";
+            xtickformat(parFig.CurrentAxes, 'auto');
+            bar(parFig.CurrentAxes, nowXAxis, nowData);
+        end
+        
+        if  butVec(3).Value == 1.
+            disp("displaying wake")
+            nowData = curWake;
+            nowXAxis = 0:23;
+            disp("data len "+string(length(nowData)));
+            disp("axis len"+string(length(nowXAxis)));
+            parFig.CurrentAxes.Visible = 'on';
+            parFig.CurrentAxes.YLimMode = 'auto';
+            myTable.Visible = "off";
+            
+            xtickformat(parFig.CurrentAxes, 'auto');
+            bar(parFig.CurrentAxes, nowXAxis, nowData);
+        end
+        
+        if butVec(4).Value == 1
+            disp("displaying emotional debt")
+        end
+        
+        if butVec(5).Value == 1
+            disp("displaying length")
+            parFig.CurrentAxes.Visible = 'on';
+            myTable.Visible = "off";
+            nowData = curLen;
+            nowXAxis = 0:23;
+            bar(parFig.CurrentAxes, nowXAxis, nowData);
+        end
+        
+        if butVec(6).Value == 1
+            disp("displaying stats")
+            plot(parFig.CurrentAxes, [1], [1]); % to clear plotted axes data
+            parFig.CurrentAxes.Visible = 'off';
+            myTable.Visible = "on";
+            myTable.ColumnName = {'Parameter', 'Value'};
+            myTable.Data=tableData;
+            displayStats();
+        end
     end
-    if butVec(2).Value == 1
-        disp("displaying sleep")
-        nowData = curSleep;
-        nowXAxis = 0:23;
-        disp("data len "+string(length(nowData)));
-        disp("axis len"+string(length(nowXAxis)));
-        xtickformat(parFig.CurrentAxes, 'auto');
-        bar(parFig.CurrentAxes, nowXAxis, nowData);
+    function aboutFcn(~, ~)
+        msgbox(["Sleepbot Export Data Visualiser"; "MATLAB course project"; "Ivan Cermak, 2020"]);
     end
-    if butVec(3).Value == 1
-        disp("displaying trend")
-        nowData = curTimes;
-        nowXAxis = curDates;
-        disp("data len "+string(length(nowData)));
-        disp("axis len"+string(length(nowXAxis)));
-        xtickformat(parFig.CurrentAxes, 'auto')
-        plot(parFig.CurrentAxes, nowXAxis, nowData);
+
+    function displayStats()
+        
     end
-end
 
-
+    function CorrInt = isIntervalCorrect(first, last)
+        if ~isnat(first) && ~isnat(last)
+            if first < last
+                CorrInt = 1;
+                return;
+            end
+        end
+        CorrInt = 0;
+    end
 end
